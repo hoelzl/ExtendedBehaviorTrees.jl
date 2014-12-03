@@ -1,0 +1,683 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<title>Extended Behavior Trees</title>
+<!-- 2014-12-03 Mi 07:53 -->
+<meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta  name="generator" content="Org-mode" />
+<meta  name="author" content="Matthias Hölzl" />
+<style type="text/css">
+ <!--/*--><![CDATA[/*><!--*/
+  .title  { text-align: center; }
+  .todo   { font-family: monospace; color: red; }
+  .done   { color: green; }
+  .tag    { background-color: #eee; font-family: monospace;
+            padding: 2px; font-size: 80%; font-weight: normal; }
+  .timestamp { color: #bebebe; }
+  .timestamp-kwd { color: #5f9ea0; }
+  .right  { margin-left: auto; margin-right: 0px;  text-align: right; }
+  .left   { margin-left: 0px;  margin-right: auto; text-align: left; }
+  .center { margin-left: auto; margin-right: auto; text-align: center; }
+  .underline { text-decoration: underline; }
+  #postamble p, #preamble p { font-size: 90%; margin: .2em; }
+  p.verse { margin-left: 3%; }
+  pre {
+    border: 1px solid #ccc;
+    box-shadow: 3px 3px 3px #eee;
+    padding: 8pt;
+    font-family: monospace;
+    overflow: auto;
+    margin: 1.2em;
+  }
+  pre.src {
+    position: relative;
+    overflow: visible;
+    padding-top: 1.2em;
+  }
+  pre.src:before {
+    display: none;
+    position: absolute;
+    background-color: white;
+    top: -10px;
+    right: 10px;
+    padding: 3px;
+    border: 1px solid black;
+  }
+  pre.src:hover:before { display: inline;}
+  pre.src-sh:before    { content: 'sh'; }
+  pre.src-bash:before  { content: 'sh'; }
+  pre.src-emacs-lisp:before { content: 'Emacs Lisp'; }
+  pre.src-R:before     { content: 'R'; }
+  pre.src-perl:before  { content: 'Perl'; }
+  pre.src-java:before  { content: 'Java'; }
+  pre.src-sql:before   { content: 'SQL'; }
+
+  table { border-collapse:collapse; }
+  caption.t-above { caption-side: top; }
+  caption.t-bottom { caption-side: bottom; }
+  td, th { vertical-align:top;  }
+  th.right  { text-align: center;  }
+  th.left   { text-align: center;   }
+  th.center { text-align: center; }
+  td.right  { text-align: right;  }
+  td.left   { text-align: left;   }
+  td.center { text-align: center; }
+  dt { font-weight: bold; }
+  .footpara:nth-child(2) { display: inline; }
+  .footpara { display: block; }
+  .footdef  { margin-bottom: 1em; }
+  .figure { padding: 1em; }
+  .figure p { text-align: center; }
+  .inlinetask {
+    padding: 10px;
+    border: 2px solid gray;
+    margin: 10px;
+    background: #ffffcc;
+  }
+  #org-div-home-and-up
+   { text-align: right; font-size: 70%; white-space: nowrap; }
+  textarea { overflow-x: auto; }
+  .linenr { font-size: smaller }
+  .code-highlighted { background-color: #ffff00; }
+  .org-info-js_info-navigation { border-style: none; }
+  #org-info-js_console-label
+    { font-size: 10px; font-weight: bold; white-space: nowrap; }
+  .org-info-js_search-highlight
+    { background-color: #ffff00; color: #000000; font-weight: bold; }
+  /*]]>*/-->
+</style>
+<script type="text/javascript">
+/*
+@licstart  The following is the entire license notice for the
+JavaScript code in this tag.
+
+Copyright (C) 2012-2013 Free Software Foundation, Inc.
+
+The JavaScript code in this tag is free software: you can
+redistribute it and/or modify it under the terms of the GNU
+General Public License (GNU GPL) as published by the Free Software
+Foundation, either version 3 of the License, or (at your option)
+any later version.  The code is distributed WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU GPL for more details.
+
+As additional permission under GNU GPL version 3 section 7, you
+may distribute non-source (e.g., minimized or compacted) forms of
+that code without the copy of the GNU GPL normally required by
+section 4, provided you include this license notice and a URL
+through which recipients can access the Corresponding Source.
+
+
+@licend  The above is the entire license notice
+for the JavaScript code in this tag.
+*/
+<!--/*--><![CDATA[/*><!--*/
+ function CodeHighlightOn(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(null != target) {
+     elem.cacheClassElem = elem.className;
+     elem.cacheClassTarget = target.className;
+     target.className = "code-highlighted";
+     elem.className   = "code-highlighted";
+   }
+ }
+ function CodeHighlightOff(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(elem.cacheClassElem)
+     elem.className = elem.cacheClassElem;
+   if(elem.cacheClassTarget)
+     target.className = elem.cacheClassTarget;
+ }
+/*]]>*///-->
+</script>
+</head>
+<body>
+<div id="content">
+<h1 class="title">Extended Behavior Trees</h1>
+<div id="table-of-contents">
+<h2>Table of Contents</h2>
+<div id="text-table-of-contents">
+<ul>
+<li><a href="#sec-1">1. About this document</a></li>
+<li><a href="#sec-2">2. Behavior Trees and Extended Behavior Trees</a>
+<ul>
+<li><a href="#sec-2-1">2.1. Extended Behavior Trees</a></li>
+<li><a href="#sec-2-2">2.2. Notes about the implementation</a></li>
+</ul>
+</li>
+<li><a href="#sec-3">3. Implementation of the basic function</a>
+<ul>
+<li><a href="#sec-3-1">3.1. Execution status of nodes</a></li>
+<li><a href="#sec-3-2">3.2. Results of ticking nodes</a></li>
+<li><a href="#sec-3-3">3.3. XBT Nodes</a></li>
+</ul>
+</li>
+<li><a href="#sec-4">4. HTN Planning</a>
+<ul>
+<li><a href="#sec-4-1">4.1. States and Goals</a></li>
+<li><a href="#sec-4-2">4.2. The Planner</a></li>
+</ul>
+</li>
+<li><a href="#sec-5">5. Reinforcement Learning</a></li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-sec-1" class="outline-2">
+<h2 id="sec-1"><span class="section-number-2">1</span> About this document</h2>
+<div class="outline-text-2" id="text-1">
+<p>
+The source of this document is an Org-Mode file that contains text,
+Julia source code and some additional data such as spreadsheets or
+tables with the results of experiments.  This file is completely
+self-contained, so that it is straightforward to recreate the
+results of the experiments once you have set up the required
+environment.  To recompile the code in this document and re-run the
+experiments you need to install Julia 0.4 as well as Emacs with
+Org-Mode and ESS (Emacs Speaks Statistics).  If you lack parts of
+this setup you will still be able to read the pre-generated output
+(in TeX and HTML format), and you can run the extracted Julia code
+on data you provide to a stand-alone Julia implementation, but it
+will be more difficult to recreate the results.
+</p>
+
+<p>
+To evaluate all code in this file evaluate
+<code>org-babel-execute-buffer</code> in Emacs (i.e., open the file in an
+instance of Emacs in which the prerequisites mentioned in the
+previous paragraph are installed, and enter <code>M-x
+  org-babel-execute-buffer</code>).  Wait a while, and the results in the
+buffer will be updated with the results of executing the examples on
+your machine.
+</p>
+
+<p>
+We add a warning (not shown in the typeset output) at the beginning
+of the generated file <code>ExtendedBehaviorTrees.jl</code>, so that people
+don't accidentally edit the generated source.
+</p>
+
+<p>
+The whole file is in the <code>ExtendedBehaviorTrees</code> module; the <code>end</code>
+for this module declaration is at the end of the file.  We disable
+evaluation of the module statement inside Org-Mode since it causes
+the Julia process to hang.  (Module disabled for now to simplify
+reloading the code during development.)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">module ExtendedBehaviorTrees
+</pre>
+</div>
+</div>
+</div>
+
+
+
+<div id="outline-container-sec-2" class="outline-2">
+<h2 id="sec-2"><span class="section-number-2">2</span> Behavior Trees and Extended Behavior Trees</h2>
+<div class="outline-text-2" id="text-2">
+<p>
+Behavior Trees (BTs) are a flexible approach for behavioral
+modeling.  BTs were originally introduced to model the AI of
+computer games, and they have recently been become more popular in
+areas such as robotics or avionics.  BTs compose atomic behaviors
+(that should correspond to more or less simple actions an agent can
+take) using operations such as sequence (execute multiple behaviors
+one after the other) or choice (pick among behaviors until one
+succeeds).  We sometimes call behaviors <i>actions</i> or <i>tasks</i>.  One
+of the advantages of BTs is that the interface between a task and
+its subtasks is very simple:
+</p>
+
+<ul class="org-ul">
+<li>Each task can be started; once started it runs until it returns
+control to its parent.  Because of the root in game engines, this
+behavior is often called <i>ticking</i>, and the corresponding function
+is <code>tick</code>.  Scheduling is cooperative; behaviors have to return
+after taking a small amount of time if the BT is integrated into a
+frequently executing control loop.
+</li>
+
+<li>A behavior can return one of three status indications: it
+succeeded, it failed, or it is still running.  This last status
+allows BTs to integrate long-running behaviors in an event loop.
+</li>
+</ul>
+</div>
+
+<div id="outline-container-sec-2-1" class="outline-3">
+<h3 id="sec-2-1"><span class="section-number-3">2.1</span> Extended Behavior Trees</h3>
+<div class="outline-text-3" id="text-2-1">
+<p>
+<i>Extended behavior trees (XBTs)</i> are an extension of behavior trees
+that support various kinds of reasoning and learning beyond the
+reactive planning of BTs.  To this end, XBTs have a slightly more
+complicated interface between parent task and subtasks:
+</p>
+
+<ul class="org-ul">
+<li>The <code>tick</code> function is called with a <i>state</i> parameter and still
+returns three status indications.  However, when a task of an XBT
+succeeds it passes back a measure of the quality of the solution
+that it has achieved, and an indication whether it could continue
+running to improve this solution.
+</li>
+
+<li>All effects caused in the world have to be mediated by the state
+passed in as argument.
+</li>
+
+<li>The state can be <i>virtualized</i>: Conceptually normal BTs operate
+directly on the ``real world'' so that actions triggered by the
+BT immediately affect the environment in which the agent running
+the BT operates.  A virtual state decouples the actions of the BT
+temporarily from the rest of the system, so that the agent can,
+e.g., plan its future course of actions by observing the effects
+various behaviors have on the world.
+</li>
+</ul>
+</div>
+</div>
+
+<div id="outline-container-sec-2-2" class="outline-3">
+<h3 id="sec-2-2"><span class="section-number-3">2.2</span> Notes about the implementation</h3>
+<div class="outline-text-3" id="text-2-2">
+<p>
+The implementation is not an exact clone of the SCEL semantics:
+</p>
+
+<ul class="org-ul">
+<li>There are two major strategies for implementing the evaluation of
+the BT: 
+
+<ul class="org-ul">
+<li>Regard the XBT instance as the description of the tree and
+store all information for the evaluation in an external
+environment. 
+</li>
+<li>Have a description layer above the classes that implement the
+BT and store the data required for evaluating the tree directly
+inside the nodes.
+</li>
+</ul>
+<p>
+The first alternative is closer to the SCEL semantics, but the
+second one seems slightly cleaner from a programming
+perspective.
+</p>
+</li>
+
+<li>There is no reason why cloning the state should require a call to
+an external service except that knowledge repositories are not a
+first class concept in SCEL.  So here we simply expect the state
+to implement a <code>xbtclone</code> method.
+</li>
+</ul>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-3" class="outline-2">
+<h2 id="sec-3"><span class="section-number-2">3</span> Implementation of the basic function</h2>
+<div class="outline-text-2" id="text-3">
+<p>
+In this section we set up the basics for XBTs: the results nodes may
+return when ticking, the execution states of a node, and finally the
+class structure of the node graph and the <code>tick</code> function.
+</p>
+</div>
+
+<div id="outline-container-sec-3-1" class="outline-3">
+<h3 id="sec-3-1"><span class="section-number-3">3.1</span> Execution status of nodes</h3>
+<div class="outline-text-3" id="text-3-1">
+<p>
+Each node can be in one of four execution states: <i>inactive</i>,
+<i>running</i>, <i>succeeded</i>, or <i>failed</i>.  To avoid confusion with the
+state passed to the <code>tick</code> function we cal this execution status of
+a node its <i>status</i>.  A node that has not yet been ticked has the
+<i>inactive</i> status.  Once it starts execution it transitions into the
+<i>running</i> status; when it returns a result or fails it moves into
+either the <i>succeeded</i> or <i>failed</i> status.  In the <i>succeeded</i>
+status we keep track of the value the node achieved.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">export XbtNodeStatus, Inactive, Running, Succeeded, Failed;
+
+abstract XbtNodeStatus;
+immutable Inactive &lt;: XbtNodeStatus end;
+immutable Running &lt;: XbtNodeStatus end;
+immutable Succeeded &lt;: XbtNodeStatus
+    value
+end;
+immutable Failed &lt;: XbtNodeStatus end;
+</pre>
+</div>
+
+<p>
+We define predicates to test which status value we have.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">export isinactive, isrunning, issucceeded, isfailed;
+
+isinactive(x) = false;
+isinactive(x::Inactive) = true;
+
+isrunning(x) = false;
+isrunning(x::Running) = true;
+
+issucceeded(x) = false;
+issucceeded(x::Succeeded) = true;
+
+isfailed(x) = false;
+isfailed(x::Failed) = true;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-3-2" class="outline-3">
+<h3 id="sec-3-2"><span class="section-number-3">3.2</span> Results of ticking nodes</h3>
+<div class="outline-text-3" id="text-3-2">
+<p>
+For each tick of an XBT, the nodes return either <i>succeeded</i> (with
+a quality value), <i>failed</i> or <i>running</i>, and an indication whether
+they can improve the result they have obtained so far.  We
+therefore return simply a tuple consisting of the status of the
+node and a Boolean value.  The status in a result may never be an
+instance of <code>Inactive</code>; furthermore when the status is <i>running</i>, the
+second value has to be <code>true</code>, when the status is <i>failed</i>, the
+second value has to be <code>false</code>.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">export XbtNodeResult;
+typealias XbtNodeResult (XbtNodeStatus, Bool);
+</pre>
+</div>
+
+<p>
+Node results are typically used to determine whether we should
+continue executing this node or not.  To simplify this we define a
+function <code>isdone</code> that tells us whether we should continue after
+obtaining a certain result.  <code>isdone</code> can either take an XBT node
+(see definition below), an <code>XbtNodeResult</code>, or a <code>XbtNodeStatus</code>
+and a Boolean value as arguments.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">export isdone;
+isdone(x) = false;
+isdone(x::XbtNodeResult) = isdone(x...);
+isdone(x, cont) = false;
+isdone(x::Succeeded, cont::Bool) = !cont;
+isdone(x::Failed, cont::Bool) = true;
+</pre>
+</div>
+
+<p>
+We define abbreviations for commonly used return values. When a
+computation fails or wants to keep running we can simply return one
+of the constants <code>failed</code> or <code>running</code>; in these cases there is no
+question whether the computation wants to continue or not, a failed
+computation never wants to continue, a running computation always
+wants to.  In the case of successful computation we have to return
+a value, and either wanting to continue or not is possible.  Since
+the former is the more likely case we make it the default.
+</p>
+<div class="org-src-container">
+
+<pre class="src src-julia">export failed, running, succeeded;
+const failed = (Failed(), false);
+const running = (Running(), true);
+succeeded(val, cont=false) = (Succeeded(val), cont);
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-3-3" class="outline-3">
+<h3 id="sec-3-3"><span class="section-number-3">3.3</span> XBT Nodes</h3>
+<div class="outline-text-3" id="text-3-3">
+<p>
+Nodes in XBTs can either be composite (if they have children) or
+atomic.  We might parameterize the classes on the type of the value
+successful computations return, but this complicates the
+definitions and does not seem to provide many benefits (since all
+functions have type <code>Function</code>, we cannot really use the type
+parameter in the places where it might affect performance).
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">export XbtNode, AtomicXbtNode, CompositeXbtNode;
+abstract XbtNode;
+abstract AtomicXbtNode &lt;: XbtNode;
+abstract CompositeXbtNode &lt;: XbtNode;
+</pre>
+</div>
+
+<p>
+Each task has to either store its execution status in a slot
+<code>status</code> or provide a method on <code>status</code> so that we can determine
+the execution status of tasks in a generic manner.  Similarly for
+continuing with the node.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">export status, setstatus;
+status(node::XbtNode) = node.status;
+setstatus(node::XbtNode, status::XbtNodeStatus) = node.status = status;
+
+export cont, setcont;
+cont(node::XbtNode) = node.cont;
+setcont(node::XbtNode, cont::Bool) = node.cont = cont;
+
+export result, setresult;
+result(node::XbtNode) = status(node), cont(node);
+
+function setresult(node::XbtNode, result::XbtNodeResult)
+    setstatus(node, result[1])
+    setcont(node, result[2])
+    result
+end;
+
+isinactive(node::XbtNode) = isinactive(status(node));
+isrunning(node::XbtNode) = isrunning(status(node));
+issucceeded(node::XbtNode) = issucceeded(status(node));
+isfailed(node::XbtNode) = isfailed(status(node));
+isdone(node::XbtNode) = isdone(status(node), cont(node));
+
+export setinactive;
+function setinactive(node::XbtNode)
+    setstatus(node, Inactive());
+    setcont(node, true); # Slightly superfluous
+end;
+</pre>
+</div>
+
+<p>
+We allow two kinds of atomic nodes: <code>XbtTask</code> and <code>XbtFun</code>.  Tasks
+are the more general nodes that are invoked as coroutines so that
+they can suspend their computation while they are still running.
+Instances of <code>XbtFun</code> are simply wrappers around functions that
+succeed or fail but don't suspend.  (Maybe we should simply allow
+functions as leaves?)
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">type XbtTask &lt;: AtomicXbtNode
+    task::Task
+    status::XbtNodeStatus
+    cont::Bool
+end;
+
+function XbtTask(fun::Function, status::XbtNodeStatus, cont::Bool)
+    XbtTask(Task(fun), status, cont);
+end;
+XbtTask(task, status) = XbtTask(task, status, false);
+XbtTask(task) = XbtTask(task, Inactive());
+
+function tick(node::XbtTask, state)
+    if (isdone(node))
+        return result(node)
+    end
+    setresult(node, consume(node.task))
+end;
+
+type XbtFun &lt;: AtomicXbtNode
+    fun::Function
+    status::XbtNodeStatus
+    cont::Bool
+end;
+
+XbtFun(fun::Function, status::XbtNodeStatus) = XbtFun(task, status, false);
+XbtFun(fun::Function) = XbtFun(fun, Inactive());
+
+function tick(node::XbtFun, state)
+    if (isdone(node))
+        return result(node)
+    end
+    setresult(node, node.fun())
+end;
+</pre>
+</div>
+
+<p>
+The following is a task that runs for three ticks, then succeeds
+with value 1 and the possibility to continue.  When ticked after
+succeeding for the first time it will continue to run for two more
+ticks and then succeed with value 10 without being able to improve.
+After that it will continue to succeed with value 10 until it is
+reset to its initial state.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">function f1()
+    for i=1:3
+        produce((Running(), true))
+    end
+    produce((Succeeded(1), true))
+    produce((Running(), true))
+    produce((Running(), true))
+    produce((Succeeded(10), false))
+end;
+task1 = XbtTask(f1);
+for i=1:8
+    println(tick(task1, ()));
+end;
+</pre>
+</div>
+
+<p>
+The results of this are example are as follows:
+</p>
+<pre class="example">
+(Running(),true)
+(Running(),true)
+(Running(),true)
+(Succeeded(1),true)
+(Running(),true)
+(Running(),true)
+(Succeeded(10),false)
+(Succeeded(10),false)
+</pre>
+
+<p>
+The simplest kinds of composite XBT nodes are sequences and
+choices.  A Sequence executes its child nodes sequentially until a
+child node fails.  In that case the sequence node fails as well.
+If all child nodes succeed the sequence node succeeds.  Choice
+nodes work in the reverse manner: They execute their children in
+turn until the first child succeeds in which case the choice
+succeeds.  If all children fail the choice fails.  Since we will
+later have several nodes that are sequence- or choice-like we
+define abstract types for these two behaviors.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">abstract XbtSequenceNode &lt;: CompositeXbtNode;
+
+function tick(node::XbtSequenceNode, state)
+    local sum = 0, status, cont;
+    for child in node.children
+        status, cont = tick(child, state);
+        if isa(status, Failed) return (status, false) end;
+        if isa(status, Running) return (status, true) end;
+        sum += status.value;
+    end;
+    # TODO: what about continuing?
+    return Succeeded(sum, false), cont;
+end;
+
+immutable XbtSeq &lt;: XbtSequenceNode
+    children::AbstractArray{XbtNode,1}
+end;
+
+abstract XbtChoiceNode &lt;: CompositeXbtNode;
+
+function tick(node::XbtChoiceNode, state)
+    local status, cont;
+    for child in node.children
+        status, cont = tick(child, state);
+        if isa(status, Succeeded) return (status, cont) end;
+        if isa(status, Running) return (status, true) end;
+    end;
+    return Failed(), cont;
+end;
+
+immutable XbtChoice &lt;: XbtChoiceNode
+    children::AbstractArray{XbtNode,1}
+end;
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-4" class="outline-2">
+<h2 id="sec-4"><span class="section-number-2">4</span> HTN Planning</h2>
+<div class="outline-text-2" id="text-4">
+</div><div id="outline-container-sec-4-1" class="outline-3">
+<h3 id="sec-4-1"><span class="section-number-3">4.1</span> States and Goals</h3>
+</div>
+
+<div id="outline-container-sec-4-2" class="outline-3">
+<h3 id="sec-4-2"><span class="section-number-3">4.2</span> The Planner</h3>
+</div>
+</div>
+
+<div id="outline-container-sec-5" class="outline-2">
+<h2 id="sec-5"><span class="section-number-2">5</span> Reinforcement Learning</h2>
+<div class="outline-text-2" id="text-5">
+<div class="org-src-container">
+
+<pre class="src src-julia">end; # module ExtendedBehaviorTrees
+</pre>
+</div>
+</div>
+</div>
+</div>
+<div id="postamble" class="status">
+<p class="author">Author: Matthias Hölzl</p>
+<p class="date">Created: 2014-12-03 Mi 07:53</p>
+<p class="creator"><a href="http://www.gnu.org/software/emacs/">Emacs</a> 24.4.1 (<a href="http://orgmode.org">Org</a> mode 8.2.10)</p>
+<p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
+</div>
+</body>
+</html>
