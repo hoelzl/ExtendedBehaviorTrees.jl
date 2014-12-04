@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
 <title>Extended Behavior Trees</title>
-<!-- 2014-12-03 Mi 07:53 -->
+<!-- 2014-12-04 Do 08:28 -->
 <meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta  name="generator" content="Org-mode" />
 <meta  name="author" content="Matthias Hölzl" />
@@ -154,6 +154,13 @@ for the JavaScript code in this tag.
 <li><a href="#sec-3-1">3.1. Execution status of nodes</a></li>
 <li><a href="#sec-3-2">3.2. Results of ticking nodes</a></li>
 <li><a href="#sec-3-3">3.3. XBT Nodes</a></li>
+<li><a href="#sec-3-4">3.4. Atomic XBT Nodes</a></li>
+<li><a href="#sec-3-5">3.5. Composite XBT Nodes</a>
+<ul>
+<li><a href="#sec-3-5-1">3.5.1. Sequence nodes</a></li>
+<li><a href="#sec-3-5-2">3.5.2. Choice nodes</a></li>
+</ul>
+</li>
 </ul>
 </li>
 <li><a href="#sec-4">4. HTN Planning</a>
@@ -319,6 +326,16 @@ first class concept in SCEL.  So here we simply expect the state
 to implement a <code>xbtclone</code> method.
 </li>
 </ul>
+
+<p>
+The possibility of improving results has interesting consequences:
+what should happen if a node claims that it can improve its result
+and then the improvement fails?  For now we require that a node
+that returns <i>succeeded</i> with an indication that it may improve
+upon the current result may never fail afterward; if it cannot
+produce a better result it has to return its previous result and
+indicate that this may no longer be improved.
+</p>
 </div>
 </div>
 </div>
@@ -507,7 +524,12 @@ function setinactive(node::XbtNode)
 end;
 </pre>
 </div>
+</div>
+</div>
 
+<div id="outline-container-sec-3-4" class="outline-3">
+<h3 id="sec-3-4"><span class="section-number-3">3.4</span> Atomic XBT Nodes</h3>
+<div class="outline-text-3" id="text-3-4">
 <p>
 We allow two kinds of atomic nodes: <code>XbtTask</code> and <code>XbtFun</code>.  Tasks
 are the more general nodes that are invoked as coroutines so that
@@ -569,23 +591,25 @@ reset to its initial state.
 
 <pre class="src src-julia">function f1()
     for i=1:3
-        produce((Running(), true))
+        produce(running)
     end
-    produce((Succeeded(1), true))
-    produce((Running(), true))
-    produce((Running(), true))
-    produce((Succeeded(10), false))
+    produce(succeeded(1, true))
+    produce(running)
+    produce(running)
+    produce(succeeded(10))
 end;
 task1 = XbtTask(f1);
-for i=1:8
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">for i=1:8
     println(tick(task1, ()));
 end;
 </pre>
 </div>
 
-<p>
-The results of this are example are as follows:
-</p>
 <pre class="example">
 (Running(),true)
 (Running(),true)
@@ -596,7 +620,12 @@ The results of this are example are as follows:
 (Succeeded(10),false)
 (Succeeded(10),false)
 </pre>
+</div>
+</div>
 
+<div id="outline-container-sec-3-5" class="outline-3">
+<h3 id="sec-3-5"><span class="section-number-3">3.5</span> Composite XBT Nodes</h3>
+<div class="outline-text-3" id="text-3-5">
 <p>
 The simplest kinds of composite XBT nodes are sequences and
 choices.  A Sequence executes its child nodes sequentially until a
@@ -606,44 +635,375 @@ nodes work in the reverse manner: They execute their children in
 turn until the first child succeeds in which case the choice
 succeeds.  If all children fail the choice fails.  Since we will
 later have several nodes that are sequence- or choice-like we
-define abstract types for these two behaviors.
+define abstract types for these two behaviors.  We also define
+the following functions
 </p>
+
+<ul class="org-ul">
+<li><code>children</code> returns a sequence of children of an XBT node.  We
+define a default implementation returning an empty list of
+children on <code>XbtNode</code>.
+</li>
+<li><code>improvechild</code> returns <code>true</code> if the node should improve the
+specified child; <code>false</code> otherwise.  It is not quite clear,
+whether this is the correct interface, or whether there should be
+a more general policy that specifies how children should be
+improved (i.e., depth first, breadth first, only some children.)
+</li>
+</ul>
 
 <div class="org-src-container">
 
 <pre class="src src-julia">abstract XbtSequenceNode &lt;: CompositeXbtNode;
-
-function tick(node::XbtSequenceNode, state)
-    local sum = 0, status, cont;
-    for child in node.children
-        status, cont = tick(child, state);
-        if isa(status, Failed) return (status, false) end;
-        if isa(status, Running) return (status, true) end;
-        sum += status.value;
-    end;
-    # TODO: what about continuing?
-    return Succeeded(sum, false), cont;
-end;
-
-immutable XbtSeq &lt;: XbtSequenceNode
-    children::AbstractArray{XbtNode,1}
-end;
-
 abstract XbtChoiceNode &lt;: CompositeXbtNode;
 
-function tick(node::XbtChoiceNode, state)
-    local status, cont;
-    for child in node.children
-        status, cont = tick(child, state);
-        if isa(status, Succeeded) return (status, cont) end;
-        if isa(status, Running) return (status, true) end;
+children(::XbtNode) = [];
+children(node::CompositeXbtNode) = node.children;
+improvechild(node::CompositeXbtNode, child::XbtNode=(), state=()) = false;
+</pre>
+</div>
+</div>
+
+<div id="outline-container-sec-3-5-1" class="outline-4">
+<h4 id="sec-3-5-1"><span class="section-number-4">3.5.1</span> Sequence nodes</h4>
+<div class="outline-text-4" id="text-3-5-1">
+<p>
+We define a generic implementation of tick for sequence nodes.
+We might have to introduce some generic functions to make it
+simpler to override parts of its behavior; this remains to be seen
+once we actually define specialized sequence nodes.  Currently
+sequence nodes improve their children immediately if they do so at
+all; this should be changed so that iterative improvements are
+possible (i.e., return first a solution after computing only
+unimproved values, then improve some values, etc.).
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">function tick(node::XbtSequenceNode, state)
+    if (isdone(node))
+        return result(node)
+    end
+    local sum = 0, status, cont;
+    for child in children(node)
+        status, cont = tick(child, state)
+        if isfailed(status)
+            return setresult(node, failed)
+        end;
+        if isrunning(status)
+            return setresult(node, running)
+        end;
+        # We have succeeded; improve the child result if necessary.
+        while (improvechild(node, child) &amp;&amp; cont)
+            println("Improving")
+            status, cont = @show tick(child, state)
+        end
+        assert(isa(status, Succeeded))
+        # Ensure that future activations don't try to improve the
+        # child again
+        setcont(child, false)
+        sum += status.value
     end;
-    return Failed(), cont;
+    setresult(node, succeeded(sum));
 end;
 
-immutable XbtChoice &lt;: XbtChoiceNode
+type XbtSeq &lt;: XbtSequenceNode
     children::AbstractArray{XbtNode,1}
+    status::XbtNodeStatus
+    cont::Bool
 end;
+
+function XbtSeq(children::AbstractArray{Any,1},
+                status::XbtNodeStatus,
+                cont::Bool)
+    XbtSeq(XbtNode[children...], status, cont)
+end;
+
+function XbtSeq(children, status=Inactive())
+    XbtSeq(children, status, false)
+end;
+</pre>
+</div>
+
+<p>
+Here is an example of using sequence nodes that succeed:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">function tick_and_print(node, n)
+    for i=1:n
+        println(tick(node, ()))
+    end
+end;
+
+function f2()
+    produce(running)
+    produce(running)
+    produce(succeeded(1, true))
+    produce(running)
+    produce(succeeded(10))
+end;
+
+task2 = XbtSeq([XbtTask(()-&gt;succeeded(10)), XbtTask(f2)]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task2, 4);
+</pre>
+</div>
+
+<pre class="example">
+(Running(),true)
+(Running(),true)
+(Succeeded(11),false)
+(Succeeded(11),false)
+</pre>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task3 = XbtSeq([XbtTask(f2), XbtTask(()-&gt;succeeded(10))]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task3, 4);
+</pre>
+</div>
+
+<pre class="example">
+(Running(),true)
+(Running(),true)
+(Succeeded(11),false)
+(Succeeded(11),false)
+</pre>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task4 = XbtSeq([XbtTask(f2), XbtTask(f2)]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task4, 6);
+</pre>
+</div>
+
+<pre class="example">
+(Running(),true)
+(Running(),true)
+(Running(),true)
+(Running(),true)
+(Succeeded(2),false)
+(Succeeded(2),false)
+</pre>
+
+<p>
+And in the following example the sequence nodes fail:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task5 = XbtSeq([XbtTask(()-&gt;failed), XbtTask(f2)]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task5, 2);
+</pre>
+</div>
+
+<pre class="example">
+0
+(Failed(),false)
+(Failed(),false)
+</pre>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task6 = XbtSeq([XbtTask(f2), XbtTask(()-&gt;failed)]);
+</pre>
+</div>
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task6, 4)
+</pre>
+</div>
+
+<pre class="example">
+0
+(Running(),true)
+(Running(),true)
+(Failed(),false)
+(Failed(),false)
+</pre>
+</div>
+</div>
+
+<div id="outline-container-sec-3-5-2" class="outline-4">
+<h4 id="sec-3-5-2"><span class="section-number-4">3.5.2</span> Choice nodes</h4>
+<div class="outline-text-4" id="text-3-5-2">
+<p>
+Choice nodes are implemented in a manner similar to sequence
+nodes, with failure and success swapped.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">function tick(node::XbtChoiceNode, state)
+    if (isdone(node))
+        return result(node)
+    end
+    local status, cont;
+    for child in children(node)
+        status, cont = tick(child, state)
+        if issucceeded(status)
+            # We have succeeded; improve child if necessary
+            while (improvechild(node, child) &amp;&amp; cont)
+                status, cont = @show tick(child, state)
+            end
+            assert(isa(status, Succeeded))
+            # Ensure that future activations don't try to improve the
+            # child again
+            setcont(child, false)
+            return setresult(node, result(child))
+        end;
+        if isrunning(status)
+            return setresult(node, running)
+        end;
+    end;
+    setresult(node, failed);
+end;
+
+type XbtChoice &lt;: XbtChoiceNode
+    children::AbstractArray{XbtNode,1}
+    status::XbtNodeStatus
+    cont::Bool
+end;
+
+function XbtChoice(children::AbstractArray{Any,1},
+                   status::XbtNodeStatus,
+                   cont::Bool)
+    XbtChoice(XbtNode[children...], status, cont)
+end;
+
+function XbtChoice(children, status=Inactive())
+    XbtChoice(children, status, false)
+end;
+</pre>
+</div>
+
+<p>
+Again, we have examples of choice nodes that succeed:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task7 = XbtChoice([XbtTask(()-&gt;succeeded(10)), XbtTask(f2)]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task7, 2);
+</pre>
+</div>
+
+<pre class="example">
+0
+
+0
+(Succeeded(10),false)
+(Succeeded(10),false)
+</pre>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task8 = XbtChoice([XbtTask(f2), XbtTask(()-&gt;succeeded(10))]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task8, 4);
+</pre>
+</div>
+
+<pre class="example">
+0
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
+</pre>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task9 = XbtChoice([XbtTask(f2), XbtTask(f2)]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task9, 4);
+</pre>
+</div>
+
+<pre class="example">
+0
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
+</pre>
+
+<p>
+And in the following example the sequence nodes fail:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task10 = XbtChoice([XbtTask(()-&gt;failed), XbtTask(f2)]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task10, 4);
+</pre>
+</div>
+
+<pre class="example">
+0
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
+</pre>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">task11 = XbtChoice([XbtTask(f2), XbtTask(()-&gt;failed)]);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-julia">tick_and_print(task11, 4);
+</pre>
+</div>
+
+<pre class="example">
+0
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
 </pre>
 </div>
 </div>
@@ -675,7 +1035,7 @@ end;
 </div>
 <div id="postamble" class="status">
 <p class="author">Author: Matthias Hölzl</p>
-<p class="date">Created: 2014-12-03 Mi 07:53</p>
+<p class="date">Created: 2014-12-04 Do 08:28</p>
 <p class="creator"><a href="http://www.gnu.org/software/emacs/">Emacs</a> 24.4.1 (<a href="http://orgmode.org">Org</a> mode 8.2.10)</p>
 <p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
 </div>

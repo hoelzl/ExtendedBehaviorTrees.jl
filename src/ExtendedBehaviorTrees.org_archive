@@ -1,0 +1,96 @@
+#    -*- mode: org -*-
+
+
+Archived entries from file /home/tc/Prog/Julia/Hacking/ExtendedBehaviorTrees.jl/src/ExtendedBehaviorTrees.org
+
+
+* Atomic XBT Nodes
+  :PROPERTIES:
+  :ARCHIVE_TIME: 2014-12-04 Do 08:05
+  :ARCHIVE_FILE: ~/Prog/Julia/Hacking/ExtendedBehaviorTrees.jl/src/ExtendedBehaviorTrees.org
+  :ARCHIVE_OLPATH: Implementation of the basic function
+  :ARCHIVE_CATEGORY: ExtendedBehaviorTrees
+  :END:
+
+   We allow two kinds of atomic nodes: ~XbtTask~ and ~XbtFun~.  Tasks
+   are the more general nodes that are invoked as coroutines so that
+   they can suspend their computation while they are still running.
+   Instances of ~XbtFun~ are simply wrappers around functions that
+   succeed or fail but don't suspend.  (Maybe we should simply allow
+   functions as leaves?)
+
+   #+BEGIN_SRC julia
+     type XbtTask <: AtomicXbtNode
+         task::Task
+         status::XbtNodeStatus
+         cont::Bool
+     end;
+
+     function XbtTask(fun::Function, status::XbtNodeStatus, cont::Bool)
+         XbtTask(Task(fun), status, cont);
+     end;
+     XbtTask(task, status) = XbtTask(task, status, false);
+     XbtTask(task) = XbtTask(task, Inactive());
+
+     function tick(node::XbtTask, state)
+         if (isdone(node))
+             return result(node)
+         end
+         setresult(node, consume(node.task))
+     end;
+
+     type XbtFun <: AtomicXbtNode
+         fun::Function
+         status::XbtNodeStatus
+         cont::Bool
+     end;
+
+     XbtFun(fun::Function, status::XbtNodeStatus) = XbtFun(task, status, false);
+     XbtFun(fun::Function) = XbtFun(fun, Inactive());
+
+     function tick(node::XbtFun, state)
+         if (isdone(node))
+             return result(node)
+         end
+         setresult(node, node.fun())
+     end;
+   #+END_SRC
+
+   The following is a task that runs for three ticks, then succeeds
+   with value 1 and the possibility to continue.  When ticked after
+   succeeding for the first time it will continue to run for two more
+   ticks and then succeed with value 10 without being able to improve.
+   After that it will continue to succeed with value 10 until it is
+   reset to its initial state.
+
+   #+BEGIN_SRC julia :tangle no
+     function f1()
+         for i=1:3
+             produce(running)
+         end
+         produce(succeeded(1, true))
+         produce(running)
+         produce(running)
+         produce(succeeded(10))
+     end;
+     task1 = XbtTask(f1);
+   #+END_SRC
+
+   #+BEGIN_SRC julia :tangle no :results output replace :exports both
+     for i=1:8
+         println(tick(task1, ()));
+     end;
+   #+END_SRC
+
+   #+RESULTS:
+   #+begin_example
+   (Running(),true)
+   (Running(),true)
+   (Running(),true)
+   (Succeeded(1),true)
+   (Running(),true)
+   (Running(),true)
+   (Succeeded(10),false)
+   (Succeeded(10),false)
+#+end_example
+

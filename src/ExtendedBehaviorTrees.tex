@@ -1,4 +1,4 @@
-% Created 2014-12-03 Mi 07:52
+% Created 2014-12-04 Do 08:36
 \documentclass[a4wide]{article}
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
@@ -152,6 +152,14 @@ first class concept in SCEL.  So here we simply expect the state
 to implement a \verb~xbtclone~ method.
 \end{itemize}
 
+The possibility of improving results has interesting consequences:
+what should happen if a node claims that it can improve its result
+and then the improvement fails?  For now we require that a node
+that returns \emph{succeeded} with an indication that it may improve
+upon the current result may never fail afterward; if it cannot
+produce a better result it has to return its previous result and
+indicate that this may no longer be improved.
+
 \section{Implementation of the basic function}
 \label{sec-3}
 
@@ -302,6 +310,9 @@ function setinactive(node::XbtNode)
 end;
 \end{verbatim}
 
+\subsection{Atomic XBT Nodes}
+\label{sec-3-4}
+
 We allow two kinds of atomic nodes: \verb~XbtTask~ and \verb~XbtFun~.  Tasks
 are the more general nodes that are invoked as coroutines so that
 they can suspend their computation while they are still running.
@@ -353,24 +364,28 @@ ticks and then succeed with value 10 without being able to improve.
 After that it will continue to succeed with value 10 until it is
 reset to its initial state.
 
-
 \begin{verbatim}
+ function tick_and_print(node, n)
+     for i=1:n
+         println(tick(node, ()))
+     end
+ end;
+
 function f1()
     for i=1:3
-        produce((Running(), true))
+        produce(running)
     end
-    produce((Succeeded(1), true))
-    produce((Running(), true))
-    produce((Running(), true))
-    produce((Succeeded(10), false))
+    produce(succeeded(1, true))
+    produce(running)
+    produce(running)
+    produce(succeeded(10))
 end;
 task1 = XbtTask(f1);
-for i=1:8
-    println(tick(task1, ()));
-end;
 \end{verbatim}
 
-The results of this are example are as follows:
+When ticking this tree for 8 iterations we obtain the following
+result:
+
 \begin{verbatim}
 (Running(),true)
 (Running(),true)
@@ -382,6 +397,9 @@ The results of this are example are as follows:
 (Succeeded(10),false)
 \end{verbatim}
 
+\subsection{Composite XBT Nodes}
+\label{sec-3-5}
+
 The simplest kinds of composite XBT nodes are sequences and
 choices.  A Sequence executes its child nodes sequentially until a
 child node fails.  In that case the sequence node fails as well.
@@ -390,42 +408,258 @@ nodes work in the reverse manner: They execute their children in
 turn until the first child succeeds in which case the choice
 succeeds.  If all children fail the choice fails.  Since we will
 later have several nodes that are sequence- or choice-like we
-define abstract types for these two behaviors.
+define abstract types for these two behaviors.  We also define
+the following functions
+
+\begin{itemize}
+\item \verb~children~ returns a sequence of children of an XBT node.  We
+define a default implementation returning an empty list of
+children on \verb~XbtNode~.
+\item \verb~improvechild~ returns \verb~true~ if the node should improve the
+specified child; \verb~false~ otherwise.  It is not quite clear,
+whether this is the correct interface, or whether there should be
+a more general policy that specifies how children should be
+improved (i.e., depth first, breadth first, only some children.)
+\end{itemize}
 
 \begin{verbatim}
 abstract XbtSequenceNode <: CompositeXbtNode;
-
-function tick(node::XbtSequenceNode, state)
-    local sum = 0, status, cont;
-    for child in node.children
-        status, cont = tick(child, state);
-        if isa(status, Failed) return (status, false) end;
-        if isa(status, Running) return (status, true) end;
-        sum += status.value;
-    end;
-    # TODO: what about continuing?
-    return Succeeded(sum, false), cont;
-end;
-
-immutable XbtSeq <: XbtSequenceNode
-    children::AbstractArray{XbtNode,1}
-end;
-
 abstract XbtChoiceNode <: CompositeXbtNode;
 
-function tick(node::XbtChoiceNode, state)
-    local status, cont;
-    for child in node.children
-        status, cont = tick(child, state);
-        if isa(status, Succeeded) return (status, cont) end;
-        if isa(status, Running) return (status, true) end;
+children(::XbtNode) = [];
+children(node::CompositeXbtNode) = node.children;
+improvechild(node::CompositeXbtNode, child::XbtNode=(), state=()) = false;
+\end{verbatim}
+
+\subsubsection{Sequence nodes}
+\label{sec-3-5-1}
+
+We define a generic implementation of tick for sequence nodes.
+We might have to introduce some generic functions to make it
+simpler to override parts of its behavior; this remains to be seen
+once we actually define specialized sequence nodes.  Currently
+sequence nodes improve their children immediately if they do so at
+all; this should be changed so that iterative improvements are
+possible (i.e., return first a solution after computing only
+unimproved values, then improve some values, etc.).
+
+\begin{verbatim}
+function tick(node::XbtSequenceNode, state)
+    if (isdone(node))
+        return result(node)
+    end
+    local sum = 0, status, cont;
+    for child in children(node)
+        status, cont = tick(child, state)
+        if isfailed(status)
+            return setresult(node, failed)
+        end;
+        if isrunning(status)
+            return setresult(node, running)
+        end;
+        # We have succeeded; improve the child result if necessary.
+        while (improvechild(node, child) && cont)
+            println("Improving")
+            status, cont = @show tick(child, state)
+        end
+        assert(isa(status, Succeeded))
+        # Ensure that future activations don't try to improve the
+        # child again
+        setcont(child, false)
+        sum += status.value
     end;
-    return Failed(), cont;
+    setresult(node, succeeded(sum));
 end;
 
-immutable XbtChoice <: XbtChoiceNode
+type XbtSeq <: XbtSequenceNode
     children::AbstractArray{XbtNode,1}
+    status::XbtNodeStatus
+    cont::Bool
 end;
+
+function XbtSeq(children::AbstractArray{Any,1},
+                status::XbtNodeStatus,
+                cont::Bool)
+    XbtSeq(XbtNode[children...], status, cont)
+end;
+
+function XbtSeq(children, status=Inactive())
+    XbtSeq(children, status, false)
+end;
+\end{verbatim}
+
+Here are some examples of sequence nodes that succeed. We run them
+until the results can no longer be improved (which is the first
+time the node succeeds).
+
+\begin{verbatim}
+function f2()
+    produce(running)
+    produce(running)
+    produce(succeeded(1, true))
+    produce(running)
+    produce(succeeded(10))
+end;
+
+task2 = XbtSeq([XbtTask(()->succeeded(10)), XbtTask(f2)]);
+\end{verbatim}
+
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Succeeded(11),false)
+(Succeeded(11),false)
+\end{verbatim}
+
+\begin{verbatim}
+task3 = XbtSeq([XbtTask(f2), XbtTask(()->succeeded(10))]);
+\end{verbatim}
+
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Succeeded(11),false)
+(Succeeded(11),false)
+\end{verbatim}
+
+\begin{verbatim}
+task4 = XbtSeq([XbtTask(f2), XbtTask(f2)]);
+\end{verbatim}
+
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Running(),true)
+(Running(),true)
+(Succeeded(2),false)
+(Succeeded(2),false)
+\end{verbatim}
+
+And in the following examples the sequence nodes fail:
+
+\begin{verbatim}
+task5 = XbtSeq([XbtTask(()->failed), XbtTask(f2)]);
+\end{verbatim}
+
+\begin{verbatim}
+(Failed(),false)
+(Failed(),false)
+\end{verbatim}
+
+\begin{verbatim}
+task6 = XbtSeq([XbtTask(f2), XbtTask(()->failed)]);
+\end{verbatim}
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Failed(),false)
+(Failed(),false)
+\end{verbatim}
+
+\subsubsection{Choice nodes}
+\label{sec-3-5-2}
+
+Choice nodes are implemented in a manner similar to sequence
+nodes, with failure and success swapped.
+
+\begin{verbatim}
+function tick(node::XbtChoiceNode, state)
+    if (isdone(node))
+        return result(node)
+    end
+    local status, cont;
+    for child in children(node)
+        status, cont = tick(child, state)
+        if issucceeded(status)
+            # We have succeeded; improve child if necessary
+            while (improvechild(node, child) && cont)
+                status, cont = @show tick(child, state)
+            end
+            assert(isa(status, Succeeded))
+            # Ensure that future activations don't try to improve the
+            # child again
+            setcont(child, false)
+            return setresult(node, result(child))
+        end;
+        if isrunning(status)
+            return setresult(node, running)
+        end;
+    end;
+    setresult(node, failed);
+end;
+
+type XbtChoice <: XbtChoiceNode
+    children::AbstractArray{XbtNode,1}
+    status::XbtNodeStatus
+    cont::Bool
+end;
+
+function XbtChoice(children::AbstractArray{Any,1},
+                   status::XbtNodeStatus,
+                   cont::Bool)
+    XbtChoice(XbtNode[children...], status, cont)
+end;
+
+function XbtChoice(children, status=Inactive())
+    XbtChoice(children, status, false)
+end;
+\end{verbatim}
+
+Again, we have examples of choice nodes that succeed:
+
+\begin{verbatim}
+task7 = XbtChoice([XbtTask(()->succeeded(10)), XbtTask(f2)]);
+\end{verbatim}
+
+\begin{verbatim}
+(Succeeded(10),false)
+(Succeeded(10),false)
+\end{verbatim}
+
+\begin{verbatim}
+task8 = XbtChoice([XbtTask(f2), XbtTask(()->succeeded(10))]);
+\end{verbatim}
+
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
+\end{verbatim}
+
+\begin{verbatim}
+task9 = XbtChoice([XbtTask(f2), XbtTask(f2)]);
+\end{verbatim}
+
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
+\end{verbatim}
+
+And in the following examples the choice nodes fail:
+
+\begin{verbatim}
+task10 = XbtChoice([XbtTask(()->failed), XbtTask(f2)]);
+\end{verbatim}
+
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
+\end{verbatim}
+
+\begin{verbatim}
+task11 = XbtChoice([XbtTask(f2), XbtTask(()->failed)]);
+\end{verbatim}
+
+\begin{verbatim}
+(Running(),true)
+(Running(),true)
+(Succeeded(1),false)
+(Succeeded(1),false)
 \end{verbatim}
 
 \section{HTN Planning}
