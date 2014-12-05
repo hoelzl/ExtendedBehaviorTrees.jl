@@ -4,7 +4,7 @@
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
 <title>Extended Behavior Trees</title>
-<!-- 2014-12-04 Do 08:28 -->
+<!-- 2014-12-04 Thu 14:21 -->
 <meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta  name="generator" content="Org-mode" />
 <meta  name="author" content="Matthias Hölzl" />
@@ -184,12 +184,13 @@ tables with the results of experiments.  This file is completely
 self-contained, so that it is straightforward to recreate the
 results of the experiments once you have set up the required
 environment.  To recompile the code in this document and re-run the
-experiments you need to install Julia 0.4 as well as Emacs with
-Org-Mode and ESS (Emacs Speaks Statistics).  If you lack parts of
-this setup you will still be able to read the pre-generated output
-(in TeX and HTML format), and you can run the extracted Julia code
-on data you provide to a stand-alone Julia implementation, but it
-will be more difficult to recreate the results.
+experiments you need to install Julia (at least version 0.3, but
+preferably version 0.4) as well as Emacs with Org-Mode and ESS
+(Emacs Speaks Statistics).  If you lack parts of this setup you will
+still be able to read the pre-generated output (in TeX and HTML
+format), and you can run the extracted Julia code on data you
+provide to a stand-alone Julia implementation, but it will be more
+difficult to recreate the results contained in this file.
 </p>
 
 <p>
@@ -197,9 +198,9 @@ To evaluate all code in this file evaluate
 <code>org-babel-execute-buffer</code> in Emacs (i.e., open the file in an
 instance of Emacs in which the prerequisites mentioned in the
 previous paragraph are installed, and enter <code>M-x
-  org-babel-execute-buffer</code>).  Wait a while, and the results in the
-buffer will be updated with the results of executing the examples on
-your machine.
+  org-babel-execute-buffer</code>; a shortcut is <code>C-c C-v b</code>).  Wait a
+while, and the results in the buffer will be updated with the
+results of executing the examples on your machine.
 </p>
 
 <p>
@@ -212,8 +213,7 @@ don't accidentally edit the generated source.
 The whole file is in the <code>ExtendedBehaviorTrees</code> module; the <code>end</code>
 for this module declaration is at the end of the file.  We disable
 evaluation of the module statement inside Org-Mode since it causes
-the Julia process to hang.  (Module disabled for now to simplify
-reloading the code during development.)
+the Julia process to hang.
 </p>
 
 <div class="org-src-container">
@@ -251,9 +251,10 @@ after taking a small amount of time if the BT is integrated into a
 frequently executing control loop.
 </li>
 
-<li>A behavior can return one of three status indications: it
-succeeded, it failed, or it is still running.  This last status
-allows BTs to integrate long-running behaviors in an event loop.
+<li>A behavior can return one of three status indications: it has
+succeeded, it has failed, or it is still running.  This last
+status allows BTs to integrate long-running behaviors in an event
+loop.
 </li>
 </ul>
 </div>
@@ -272,12 +273,14 @@ complicated interface between parent task and subtasks:
 <li>The <code>tick</code> function is called with a <i>state</i> parameter and still
 returns three status indications.  However, when a task of an XBT
 succeeds it passes back a measure of the quality of the solution
-that it has achieved, and an indication whether it could continue
-running to improve this solution.
+that it has achieved, and an indication whether and how it could
+continue running to improve this solution.
 </li>
 
 <li>All effects caused in the world have to be mediated by the state
-passed in as argument.
+passed in as argument.  That is, any function <code>f</code> that has an
+observable side effect should have a signature of the form
+<code>f(state, args...)</code>.
 </li>
 
 <li>The state can be <i>virtualized</i>: Conceptually normal BTs operate
@@ -300,32 +303,45 @@ The implementation is not an exact clone of the SCEL semantics:
 </p>
 
 <ul class="org-ul">
-<li>There are two major strategies for implementing the evaluation of
-the BT: 
+<li>Cloning the state is not performed by an external service; this
+is necessary in the semantics since knowledge repositories are
+not a first class concept in SCEL.  In this implementation we
+expect the state to implement a <code>xbtclone</code> method.
+
+<div class="org-src-container">
+
+<pre class="src src-julia">devirtualized_states = Dict();
+function virtualize(state)
+  res = deepcopy(state)
+  res
+end;
+</pre>
+</div>
 
 <ul class="org-ul">
 <li>Regard the XBT instance as the description of the tree and
 store all information for the evaluation in an external
 environment. 
 </li>
+
 <li>Have a description layer above the classes that implement the
 BT and store the data required for evaluating the tree directly
 inside the nodes.
-</li>
-</ul>
+
 <p>
 The first alternative is closer to the SCEL semantics, but the
 second one seems slightly cleaner from a programming
 perspective.
 </p>
 </li>
+</ul>
+</li>
 
-<li>There is no reason why cloning the state should require a call to
-an external service except that knowledge repositories are not a
-first class concept in SCEL.  So here we simply expect the state
-to implement a <code>xbtclone</code> method.
+<li>There are two major strategies for implementing the evaluation of
+the BT: 
 </li>
 </ul>
+
 
 <p>
 The possibility of improving results has interesting consequences:
@@ -589,7 +605,13 @@ reset to its initial state.
 
 <div class="org-src-container">
 
-<pre class="src src-julia">function f1()
+<pre class="src src-julia"> function tick_and_print(node, n)
+     for i=1:n
+         println(tick(node, ()))
+     end
+ end;
+
+function f1()
     for i=1:3
         produce(running)
     end
@@ -602,13 +624,10 @@ task1 = XbtTask(f1);
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">for i=1:8
-    println(tick(task1, ()));
-end;
-</pre>
-</div>
+<p>
+When ticking this tree for 8 iterations we obtain the following
+result:
+</p>
 
 <pre class="example">
 (Running(),true)
@@ -726,18 +745,14 @@ end;
 </div>
 
 <p>
-Here is an example of using sequence nodes that succeed:
+Here are some examples of sequence nodes that succeed. We run them
+until the results can no longer be improved (which is the first
+time the node succeeds).
 </p>
 
 <div class="org-src-container">
 
-<pre class="src src-julia">function tick_and_print(node, n)
-    for i=1:n
-        println(tick(node, ()))
-    end
-end;
-
-function f2()
+<pre class="src src-julia">function f2()
     produce(running)
     produce(running)
     produce(succeeded(1, true))
@@ -746,12 +761,6 @@ function f2()
 end;
 
 task2 = XbtSeq([XbtTask(()-&gt;succeeded(10)), XbtTask(f2)]);
-</pre>
-</div>
-
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task2, 4);
 </pre>
 </div>
 
@@ -768,12 +777,6 @@ task2 = XbtSeq([XbtTask(()-&gt;succeeded(10)), XbtTask(f2)]);
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task3, 4);
-</pre>
-</div>
-
 <pre class="example">
 (Running(),true)
 (Running(),true)
@@ -787,12 +790,6 @@ task2 = XbtSeq([XbtTask(()-&gt;succeeded(10)), XbtTask(f2)]);
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task4, 6);
-</pre>
-</div>
-
 <pre class="example">
 (Running(),true)
 (Running(),true)
@@ -803,7 +800,7 @@ task2 = XbtSeq([XbtTask(()-&gt;succeeded(10)), XbtTask(f2)]);
 </pre>
 
 <p>
-And in the following example the sequence nodes fail:
+And in the following examples the sequence nodes fail:
 </p>
 
 <div class="org-src-container">
@@ -812,14 +809,7 @@ And in the following example the sequence nodes fail:
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task5, 2);
-</pre>
-</div>
-
 <pre class="example">
-0
 (Failed(),false)
 (Failed(),false)
 </pre>
@@ -829,14 +819,7 @@ And in the following example the sequence nodes fail:
 <pre class="src src-julia">task6 = XbtSeq([XbtTask(f2), XbtTask(()-&gt;failed)]);
 </pre>
 </div>
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task6, 4)
-</pre>
-</div>
-
 <pre class="example">
-0
 (Running(),true)
 (Running(),true)
 (Failed(),false)
@@ -908,16 +891,7 @@ Again, we have examples of choice nodes that succeed:
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task7, 2);
-</pre>
-</div>
-
 <pre class="example">
-0
-
-0
 (Succeeded(10),false)
 (Succeeded(10),false)
 </pre>
@@ -928,14 +902,7 @@ Again, we have examples of choice nodes that succeed:
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task8, 4);
-</pre>
-</div>
-
 <pre class="example">
-0
 (Running(),true)
 (Running(),true)
 (Succeeded(1),false)
@@ -948,14 +915,7 @@ Again, we have examples of choice nodes that succeed:
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task9, 4);
-</pre>
-</div>
-
 <pre class="example">
-0
 (Running(),true)
 (Running(),true)
 (Succeeded(1),false)
@@ -963,7 +923,7 @@ Again, we have examples of choice nodes that succeed:
 </pre>
 
 <p>
-And in the following example the sequence nodes fail:
+And in the following examples the choice nodes fail:
 </p>
 
 <div class="org-src-container">
@@ -972,14 +932,7 @@ And in the following example the sequence nodes fail:
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task10, 4);
-</pre>
-</div>
-
 <pre class="example">
-0
 (Running(),true)
 (Running(),true)
 (Succeeded(1),false)
@@ -992,14 +945,7 @@ And in the following example the sequence nodes fail:
 </pre>
 </div>
 
-<div class="org-src-container">
-
-<pre class="src src-julia">tick_and_print(task11, 4);
-</pre>
-</div>
-
 <pre class="example">
-0
 (Running(),true)
 (Running(),true)
 (Succeeded(1),false)
@@ -1035,7 +981,7 @@ And in the following example the sequence nodes fail:
 </div>
 <div id="postamble" class="status">
 <p class="author">Author: Matthias Hölzl</p>
-<p class="date">Created: 2014-12-04 Do 08:28</p>
+<p class="date">Created: 2014-12-04 Thu 14:21</p>
 <p class="creator"><a href="http://www.gnu.org/software/emacs/">Emacs</a> 24.4.1 (<a href="http://orgmode.org">Org</a> mode 8.2.10)</p>
 <p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
 </div>

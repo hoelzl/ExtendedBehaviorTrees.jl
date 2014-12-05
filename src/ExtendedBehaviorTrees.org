@@ -19,20 +19,21 @@
   self-contained, so that it is straightforward to recreate the
   results of the experiments once you have set up the required
   environment.  To recompile the code in this document and re-run the
-  experiments you need to install Julia 0.4 as well as Emacs with
-  Org-Mode and ESS (Emacs Speaks Statistics).  If you lack parts of
-  this setup you will still be able to read the pre-generated output
-  (in TeX and HTML format), and you can run the extracted Julia code
-  on data you provide to a stand-alone Julia implementation, but it
-  will be more difficult to recreate the results.
+  experiments you need to install Julia (at least version 0.3, but
+  preferably version 0.4) as well as Emacs with Org-Mode and ESS
+  (Emacs Speaks Statistics).  If you lack parts of this setup you will
+  still be able to read the pre-generated output (in TeX and HTML
+  format), and you can run the extracted Julia code on data you
+  provide to a stand-alone Julia implementation, but it will be more
+  difficult to recreate the results contained in this file.
 
   To evaluate all code in this file evaluate
   ~org-babel-execute-buffer~ in Emacs (i.e., open the file in an
   instance of Emacs in which the prerequisites mentioned in the
   previous paragraph are installed, and enter ~M-x
-  org-babel-execute-buffer~).  Wait a while, and the results in the
-  buffer will be updated with the results of executing the examples on
-  your machine.
+  org-babel-execute-buffer~; a shortcut is ~C-c C-v b~).  Wait a
+  while, and the results in the buffer will be updated with the
+  results of executing the examples on your machine.
 
   We add a warning (not shown in the typeset output) at the beginning
   of the generated file ~ExtendedBehaviorTrees.jl~, so that people
@@ -46,12 +47,10 @@
     # Licensed under the MIT license, see the file LICENSE.md.
   #+END_SRC
 
-
   The whole file is in the ~ExtendedBehaviorTrees~ module; the ~end~
   for this module declaration is at the end of the file.  We disable
   evaluation of the module statement inside Org-Mode since it causes
-  the Julia process to hang.  (Module disabled for now to simplify
-  reloading the code during development.)
+  the Julia process to hang.
 
   #+BEGIN_SRC julia :eval never
     module ExtendedBehaviorTrees
@@ -79,9 +78,10 @@
     after taking a small amount of time if the BT is integrated into a
     frequently executing control loop.
 
-  - A behavior can return one of three status indications: it
-    succeeded, it failed, or it is still running.  This last status
-    allows BTs to integrate long-running behaviors in an event loop.
+  - A behavior can return one of three status indications: it has
+    succeeded, it has failed, or it is still running.  This last
+    status allows BTs to integrate long-running behaviors in an event
+    loop.
 
 ** Extended Behavior Trees
 
@@ -93,11 +93,13 @@
    - The ~tick~ function is called with a /state/ parameter and still
      returns three status indications.  However, when a task of an XBT
      succeeds it passes back a measure of the quality of the solution
-     that it has achieved, and an indication whether it could continue
-     running to improve this solution.
+     that it has achieved, and an indication whether and how it could
+     continue running to improve this solution.
 
    - All effects caused in the world have to be mediated by the state
-     passed in as argument.
+     passed in as argument.  That is, any function ~f~ that has an
+     observable side effect should have a signature of the form
+     ~f(state, args...)~.
 
    - The state can be /virtualized/: Conceptually normal BTs operate
      directly on the ``real world'' so that actions triggered by the
@@ -105,30 +107,52 @@
      the BT operates.  A virtual state decouples the actions of the BT
      temporarily from the rest of the system, so that the agent can,
      e.g., plan its future course of actions by observing the effects
-     various behaviors have on the world.
+     various behaviors have on the world.  Virtualization and
+     devirtualization only works with types that implement equality as
+     ~===~; using collections as state will not work when virtualizing
+     states.
+
+     #+BEGIN_SRC julia
+       devirtualized_states = WeakKeyDict();
+
+       isvirtual(state) = state ∈ keys(devirtualized_states);
+
+       devirtualize(state) = get(devirtualized_states, state, state);
+
+       function virtualize(state)
+           res = deepcopy(state)
+           dev = devirtualize(state)
+           devirtualized_states[res] = dev
+           res
+       end;
+     #+END_SRC
+
 
 ** Notes about the implementation
 
    The implementation is not an exact clone of the SCEL semantics:
 
-   - There are two major strategies for implementing the evaluation of
-     the BT: 
+   - Cloning the state is not performed by an external service; this
+     is necessary in the semantics since knowledge repositories are
+     not a first class concept in SCEL.  In this implementation we
+     expect the state to implement a ~xbtclone~ method.
+
 
      - Regard the XBT instance as the description of the tree and
        store all information for the evaluation in an external
        environment. 
+
      - Have a description layer above the classes that implement the
        BT and store the data required for evaluating the tree directly
        inside the nodes.
 
-     The first alternative is closer to the SCEL semantics, but the
-     second one seems slightly cleaner from a programming
-     perspective.
+       The first alternative is closer to the SCEL semantics, but the
+       second one seems slightly cleaner from a programming
+       perspective.
 
-   - There is no reason why cloning the state should require a call to
-     an external service except that knowledge repositories are not a
-     first class concept in SCEL.  So here we simply expect the state
-     to implement a ~xbtclone~ method.
+   - There are two major strategies for implementing the evaluation of
+     the BT: 
+
 
    The possibility of improving results has interesting consequences:
    what should happen if a node claims that it can improve its result
